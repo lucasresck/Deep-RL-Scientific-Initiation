@@ -9,9 +9,11 @@ import argparse
 import cProfile
 import csv
 import gym
+import matplotlib.pyplot as plt
 import numpy as np
 import os
 import pickle
+import pstats
 import random
 import tensorflow as tf
 import time
@@ -26,13 +28,15 @@ class NeuralNetwork():
         self.model = self.model_of_network()
 
     def model_of_network(self):
-        inputs = keras.Input(shape=self.input_shape)
+        frames_input = keras.Input(shape=self.input_shape)
+        actions_input = keras.Input(shape=(self.action_size,))
+
         x = layers.Conv2D(
             filters=16,
             kernel_size=8,
             strides=(4, 4),
             activation='relu'
-        )(inputs)
+        )(frames_input)
         x = layers.Conv2D(
             filters=32,
             kernel_size=4,
@@ -41,12 +45,14 @@ class NeuralNetwork():
         )(x)
         x = layers.Flatten()(x)
         x = layers.Dense(units=256, activation='relu')(x)
-        outputs = tf.keras.layers.Dense(units=self.action_size)(x)
+        output = layers.Dense(units=self.action_size)(x)
+        filtered_output = layers.Multiply()([output, actions_input])
 
-        model = keras.Model(inputs=inputs, outputs=outputs, name='deep_q_network')
+        model = keras.Model(inputs=[frames_input, actions_input], outputs=filtered_output, name='deep_q_network')
 
         if self.summary:
             model.summary()
+            keras.utils.plot_model(model, 'images/deep_q_network.png', show_shapes=True)
         model.compile(loss='mean_squared_error', optimizer=tf.keras.optimizers.RMSprop(learning_rate=self.learning_rate))
         return model
 
@@ -261,31 +267,9 @@ class DeepQAgent():
 
     def compute_values(self, last_4_states):
         """Compute values of a state."""
-        logits = self.neural_network.model.predict(last_4_states[np.newaxis, ...])
+        one_hot = np.ones(shape=(1, self.action_size))
+        logits = self.neural_network.model.predict([last_4_states[np.newaxis, ...], one_hot])
         return logits[0]
-
-    # def train_from_replay(self):
-    #     minibatch = self.replay_memory.minibatch()
-    #     states = []
-    #     actions = []
-    #     rewards = []
-    #     states_ = []
-    #     dones = []
-    #     for sample in minibatch:
-    #         state, action, reward, state_, done = sample
-    #         states.append(state)
-    #         actions.append(action)
-    #         rewards.append(reward)
-    #         states_.append(state_)
-    #         dones.append(done)
-    #     targets = self.neural_network.model.predict(states)
-    #     targets_ = self.target_network.model.predict(states_)
-    #     for i, target in enumerate(targets):
-    #         if dones[i]:
-    #             targets[i][actions[i]] = rewards[i]
-    #         else:
-    #             targets[i][actions[i]] = rewards[i] + self.gamma * np.max(targets_[i])
-    #     self.neural_network.model.fit(states, targets)
 
     def train_from_replay(self):
         """Train neural network from samples of replay memory."""
@@ -316,13 +300,15 @@ class DeepQAgent():
         return targets
 
     def target_predict(self, states, states_):
-        targets = self.neural_network.model.predict(states)
-        targets_ = self.target_network.model.predict(states_)
+        one_hot = np.ones(shape=(states.shape[0], self.action_size))
+        targets = self.neural_network.model.predict([states, one_hot])
+        targets_ = self.target_network.model.predict([states_, one_hot])
         return targets, targets_
 
     def fit(self, states, targets):
+        one_hot = np.ones(shape=(states.shape[0], self.action_size))
         self.neural_network.model.fit(
-            x=states,
+            x=[states, one_hot],
             y=targets,
             verbose=0
         )
@@ -332,8 +318,7 @@ class DeepQAgent():
 
         self.mean_reward.append(total_reward)
 
-        print()
-        print('ep    reward    mean_rew    epsilon    time     accum_time    frames    acumm_frames')
+        print('\nep    reward    mean_rew    epsilon    time     accum_time    frames    acumm_frames')
 
         ep = episode
         print('{}'.format(ep) + ' '*(len('ep')+4-len(str(ep))), end='')
@@ -411,15 +396,21 @@ class DeepQAgent():
         """Select which is the best action based on the network."""
         if np.random.rand() < self.epsilon_min/10:
             return self.env.action_space.sample()
-        logits = self.neural_network.model.predict(state[np.newaxis, ...])[0]
+        one_hot = np.ones(shape=(1, self.action_size))
+        logits = self.neural_network.model.predict([state[np.newaxis, ...], one_hot])[0]
         return np.argmax(logits)
 
-    def save_rewards(self, file_path):
+    def save_rewards(self, file_path, image_path, now):
         """Save the list of total rewards."""
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         with open(file_path, 'w', newline='') as myfile:
             wr = csv.writer(myfile, quoting=csv.QUOTE_ALL)
             wr.writerow(self.rewards)
+        plt.plot(self.rewards)
+        plt.title('Rewards during iteration - ' + now)
+        plt.xlabel('Iteration')
+        plt.ylabel('Reward')
+        plt.savefig(image_path)
         print('\nRewards saved.')
 
 def gpu_setup():
@@ -456,12 +447,15 @@ def main():
             cProfile.runctx('agent.train()', {'agent': agent}, {}, filename='stats/temp-breakout')
             now = datetime.today().strftime('%Y-%m-%d-%H:%M:%S')
             os.rename('stats/temp-breakout', 'stats/' + now + '-breakout')
+            with open('stats/' + now + '-breakout-text', 'w') as f:
+                p = pstats.Stats('stats/' + now + '-breakout', stream=f)
+                p.strip_dirs().sort_stats('cumulative').print_stats('breakout')
             print('\nProfile saved.')
         else:
             agent.train()        
             now = datetime.today().strftime('%Y-%m-%d-%H:%M:%S')
-        agent.save_rewards('rewards/' + now + '-breakout.csv')
         agent.save_network('models/' + now + '-breakout.h5')
+        agent.save_rewards('rewards/' + now + '-breakout.csv', 'rewards/' + now + '-breakout-text.png', now)
 
 if __name__ == '__main__':
     main()
