@@ -2,6 +2,8 @@
 
 from collections import deque
 from datetime import datetime
+from tensorflow import keras
+from tensorflow.keras import layers
 # from gym import wrappers
 import argparse
 import cProfile
@@ -24,29 +26,25 @@ class NeuralNetwork():
         self.model = self.model_of_network()
 
     def model_of_network(self):
-        model = tf.keras.Sequential([
-            tf.keras.layers.Conv2D(
-                input_shape=self.input_shape,
-                filters=16,
-                kernel_size=8,
-                strides=(4, 4),
-                activation='relu'
-            ),
-            tf.keras.layers.Conv2D(
-                filters=32,
-                kernel_size=4,
-                strides=(2, 2),
-                activation='relu'
-            ),
-            tf.keras.layers.Flatten(),
-            tf.keras.layers.Dense(
-                units=256,
-                activation='relu'
-            ),
-            tf.keras.layers.Dense(
-                units=self.action_size
-            )
-        ])
+        inputs = keras.Input(shape=self.input_shape)
+        x = layers.Conv2D(
+            filters=16,
+            kernel_size=8,
+            strides=(4, 4),
+            activation='relu'
+        )(inputs)
+        x = layers.Conv2D(
+            filters=32,
+            kernel_size=4,
+            strides=(2, 2),
+            activation='relu'
+        )(x)
+        x = layers.Flatten()(x)
+        x = layers.Dense(units=256, activation='relu')(x)
+        outputs = tf.keras.layers.Dense(units=self.action_size)(x)
+
+        model = keras.Model(inputs=inputs, outputs=outputs, name='deep_q_network')
+
         if self.summary:
             model.summary()
         model.compile(loss='mean_squared_error', optimizer=tf.keras.optimizers.RMSprop(learning_rate=self.learning_rate))
