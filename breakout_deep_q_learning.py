@@ -102,12 +102,12 @@ class DeepQAgent():
         record,
         env_name='BreakoutDeterministic-v4',
         gamma=0.99,
-        max_frames=10000000,
+        max_frames=160000,
         max_iterations=1000000,
-        epsilon_decay_until=10000000,
+        epsilon_decay_until=80000,
         epsilon_min=0.1,
-        replay_memory_capacity=1000000,
-        start_replay=50000,
+        replay_memory_capacity=80000,
+        start_replay=16000,
         minibatch_size=32,
         nn_input_shape=(105, 80, 4),
     ):
@@ -271,47 +271,90 @@ class DeepQAgent():
         logits = self.neural_network.model.predict([last_4_states[np.newaxis, ...], one_hot])
         return logits[0]
 
+    # def train_from_replay(self):
+    #     """Train neural network from samples of replay memory."""
+    #     minibatch = self.replay_memory.minibacth()
+    #     states, states_ = self.extract_states(minibatch)
+    #     targets = self.calculate_targets(minibatch, states, states_)
+    #     self.fit(states, targets)
+
+    # def extract_states(self, minibatch):
+    #     states = []
+    #     states_ = []
+    #     for sample in minibatch:
+    #         state, _, _, state_, _ = sample
+    #         states.append(state)
+    #         states_.append(state_)
+    #     states = np.array(states)
+    #     states_ = np.array(states_)
+    #     return states, states_
+
+    # def calculate_targets(self, minibatch, states, states_):
+    #     targets_ = self.target_predict(states_)
+    #     for i, sample in enumerate(minibatch):
+    #         _, action, reward, _, done = sample
+    #         if done:
+    #             targets[i][action] = reward
+    #         else:
+    #             targets[i][action] = reward + self.gamma * np.max(targets_[i])
+    #     return targets
+
+    # def target_predict(self, states_):
+    #     one_hot = np.ones(shape=(states.shape[0], self.action_size))
+    #     targets_ = self.target_network.model.predict([states_, one_hot])
+    #     return targets_
+
+    # def fit(self, states, targets):
+    #     one_hot = np.ones(shape=(states.shape[0], self.action_size))
+    #     self.neural_network.model.fit(
+    #         x=[states, one_hot],
+    #         y=targets,
+    #         verbose=0
+    #     )
+
     def train_from_replay(self):
         """Train neural network from samples of replay memory."""
         minibatch = self.replay_memory.minibacth()
-        states, states_ = self.extract_states(minibatch)
-        targets = self.calculate_targets(minibatch, states, states_)
-        self.fit(states, targets)
+        states, actions, rewards, states_, dones = self.divide_minibatch(minibatch)
+        one_hot_actions = self.one_hot(actions)
+        next_Q = self.predict([states_, np.ones((self.minibatch_size, self.action_size))])
+        next_Q[dones] = 0
+        targets = rewards + self.gamma * np.max(next_Q, axis=1)
+        self.fit([states, one_hot_actions], one_hot_actions*targets[..., np.newaxis])
 
-    def extract_states(self, minibatch):
+    def divide_minibatch(self, minibacth):
+        """Divide minibatch between states, actions, rewards, states_, dones"""
         states = []
+        actions = []
+        rewards = []
         states_ = []
-        for sample in minibatch:
-            state, _, _, state_, _ = sample
+        dones = []
+        for sample in minibacth:
+            state, action, reward, state_, done = sample
             states.append(state)
+            actions.append(action)
+            rewards.append(reward)
             states_.append(state_)
+            dones.append(done)
         states = np.array(states)
+        actions = np.array(actions)
+        rewards = np.array(rewards)
         states_ = np.array(states_)
-        return states, states_
+        dones = np.array(dones, dtype=np.bool)
+        return states, actions, rewards, states_, dones
 
-    def calculate_targets(self, minibatch, states, states_):
-        targets, targets_ = self.target_predict(states, states_)
-        for i, sample in enumerate(minibatch):
-            _, action, reward, _, done = sample
-            if done:
-                targets[i][action] = reward
-            else:
-                targets[i][action] = reward + self.gamma * np.max(targets_[i])
-        return targets
+    def one_hot(self, actions):
+        """Return one-hot enconding actions."""
+        one_hot_actions = np.zeros((self.minibatch_size, self.action_size))
+        for i, action in enumerate(actions):
+            one_hot_actions[i, action] = 1
+        return one_hot_actions
 
-    def target_predict(self, states, states_):
-        one_hot = np.ones(shape=(states.shape[0], self.action_size))
-        targets = self.neural_network.model.predict([states, one_hot])
-        targets_ = self.target_network.model.predict([states_, one_hot])
-        return targets, targets_
+    def predict(self, inputs):
+        return self.neural_network.model.predict(inputs)
 
-    def fit(self, states, targets):
-        one_hot = np.ones(shape=(states.shape[0], self.action_size))
-        self.neural_network.model.fit(
-            x=[states, one_hot],
-            y=targets,
-            verbose=0
-        )
+    def fit(self, inputs, outputs):
+        self.neural_network.model.fit(inputs, outputs, verbose=0)
 
     def report(self, i, episode, total_reward):
         """Show status on console."""
@@ -455,7 +498,7 @@ def main():
             agent.train()        
             now = datetime.today().strftime('%Y-%m-%d-%H:%M:%S')
         agent.save_network('models/' + now + '-breakout.h5')
-        agent.save_rewards('rewards/' + now + '-breakout.csv', 'rewards/' + now + '-breakout-text.png', now)
+        agent.save_rewards('rewards/' + now + '-breakout.csv', 'rewards/' + now + '-breakout.png', now)
 
 if __name__ == '__main__':
     main()
