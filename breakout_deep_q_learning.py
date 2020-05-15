@@ -365,6 +365,7 @@ class DeepQAgent():
     def fit(self, inputs, outputs):
         if self.callback:
             self.neural_network.model.fit(inputs, outputs, verbose=0, callbacks=[self.tensorboard_callback])
+            self.callback = False
         else:
             self.neural_network.model.fit(inputs, outputs, verbose=0)
 
