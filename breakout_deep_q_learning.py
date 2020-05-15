@@ -52,7 +52,6 @@ class NeuralNetwork():
 
         if self.summary:
             model.summary()
-            keras.utils.plot_model(model, 'images/deep_q_network.png', show_shapes=True)
         model.compile(loss='mean_squared_error', optimizer=tf.keras.optimizers.RMSprop(learning_rate=self.learning_rate))
         return model
 
@@ -102,14 +101,15 @@ class DeepQAgent():
         record,
         env_name='BreakoutDeterministic-v4',
         gamma=0.99,
-        max_frames=160000,
-        max_iterations=1000000,
-        epsilon_decay_until=80000,
+        max_frames=int(1e7),
+        max_iterations=int(5e4),
+        epsilon_decay_until=int(1e6),
         epsilon_min=0.1,
-        replay_memory_capacity=80000,
-        start_replay=16000,
+        replay_memory_capacity=int(1e6),
+        start_replay=int(5e4),
         minibatch_size=32,
         nn_input_shape=(105, 80, 4),
+        log_dir = 'logs/breakout/'
     ):
         self.env = gym.make(env_name)
         # if record:
@@ -135,8 +135,13 @@ class DeepQAgent():
             minibatch_size=self.minibatch_size,
             n_channels = self.nn_input_shape[2]
         )
-        self.mean_reward = deque(maxlen=100)
-        self.rewards = []
+        self.mean_reward = deque(maxlen=50)
+        self.log_dir = log_dir
+        self.current_time = datetime.now().strftime("%Y%m%d-%H%M%S")
+        self.log_dir += self.current_time
+        self.writer = tf.summary.create_file_writer(self.log_dir)
+        self.tensorboard_callback = keras.callbacks.TensorBoard(log_dir=self.log_dir)
+        self.callback = True
 
     def set_seeds(self, seed):
         """Set random seeds using current time."""
@@ -198,12 +203,14 @@ class DeepQAgent():
         self.target_network.model.set_weights(self.neural_network.model.get_weights())
 
         episode = 0  # Flag
-        while self.i_frames < self.max_frames:
-            if self.train_episode(episode):
-                break
-            # if (episode + 1) % 50 == 0:
-            #     self.sample(1)
-            episode += 1
+
+        with self.writer.as_default():
+            while self.i_frames < self.max_frames:
+                if self.train_episode(episode):
+                    break
+                # if (episode + 1) % 50 == 0:
+                #     self.sample(1)
+                episode += 1
 
         self.env.close()
 
@@ -234,10 +241,12 @@ class DeepQAgent():
                 break
             elif done:
                 break
-        self.rewards.append(total_reward)
+
+        tf.summary.scalar("total_reward", total_reward, step=episode)
+        self.writer.flush()
         self.report(i, episode, total_reward)
         self.sync_networks()
-        if (episode + 1) % 100 == 0:
+        if (episode + 1) % 50 == 0:
             now = datetime.today().strftime('%Y-%m-%d-%H:%M:%S')
             self.save_network('models/' + now + '-breakout-{}.h5'.format(episode))
         return max_frames
@@ -354,7 +363,10 @@ class DeepQAgent():
         return self.neural_network.model.predict(inputs)
 
     def fit(self, inputs, outputs):
-        self.neural_network.model.fit(inputs, outputs, verbose=0)
+        if self.callback:
+            self.neural_network.model.fit(inputs, outputs, verbose=0, callbacks=[self.tensorboard_callback])
+        else:
+            self.neural_network.model.fit(inputs, outputs, verbose=0)
 
     def report(self, i, episode, total_reward):
         """Show status on console."""
@@ -395,8 +407,10 @@ class DeepQAgent():
         """Sync original and target neural networks."""
         self.target_network.model.set_weights(self.neural_network.model.get_weights())
 
-    def save_network(self, network_path):
+    def save_network(self, network_path='models/breakout/'):
         """Save the network in order to run it faster."""
+        network_path += self.current_time
+        network_path += '.h5'
         os.makedirs(os.path.dirname(network_path), exist_ok=True)
         self.neural_network.model.save(network_path)
         print('\nNeural network saved.')
@@ -443,19 +457,6 @@ class DeepQAgent():
         logits = self.neural_network.model.predict([state[np.newaxis, ...], one_hot])[0]
         return np.argmax(logits)
 
-    def save_rewards(self, file_path, image_path, now):
-        """Save the list of total rewards."""
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
-        with open(file_path, 'w', newline='') as myfile:
-            wr = csv.writer(myfile, quoting=csv.QUOTE_ALL)
-            wr.writerow(self.rewards)
-        plt.plot(self.rewards)
-        plt.title('Rewards during iteration - ' + now)
-        plt.xlabel('Iteration')
-        plt.ylabel('Reward')
-        plt.savefig(image_path)
-        print('\nRewards saved.')
-
 def gpu_setup():
     """Config GPU for TensorFlow."""
     gpus = tf.config.experimental.list_physical_devices('GPU')
@@ -487,18 +488,17 @@ def main():
         agent.sample()
     else:
         if args.profile:
-            cProfile.runctx('agent.train()', {'agent': agent}, {}, filename='stats/temp-breakout')
-            now = datetime.today().strftime('%Y-%m-%d-%H:%M:%S')
-            os.rename('stats/temp-breakout', 'stats/' + now + '-breakout')
-            with open('stats/' + now + '-breakout-text', 'w') as f:
-                p = pstats.Stats('stats/' + now + '-breakout', stream=f)
+            os.makedirs(os.path.dirname('stats/breakout/temp'), exist_ok=True)
+            cProfile.runctx('agent.train()', {'agent': agent}, {}, filename='stats/breakout/temp')
+            current_time = agent.current_time
+            os.rename('stats/breakout/temp', 'stats/breakout/' + current_time)
+            with open('stats/breakout/' + current_time + '-text', 'w') as f:
+                p = pstats.Stats('stats/breakout/' + current_time, stream=f)
                 p.strip_dirs().sort_stats('cumulative').print_stats('breakout')
             print('\nProfile saved.')
         else:
             agent.train()        
-            now = datetime.today().strftime('%Y-%m-%d-%H:%M:%S')
-        agent.save_network('models/' + now + '-breakout.h5')
-        agent.save_rewards('rewards/' + now + '-breakout.csv', 'rewards/' + now + '-breakout.png', now)
+        agent.save_network()
 
 if __name__ == '__main__':
     main()
