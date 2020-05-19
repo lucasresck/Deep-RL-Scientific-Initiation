@@ -157,9 +157,9 @@ class DeepQAgent():
 
     def fill_replay_memory(self):
         """Fill replay memory on start."""
-
+        i_frames = 0
         print('\nFilling replay memory...', end='')
-        while self.i_frames < self.start_replay:
+        while i_frames < self.start_replay:
             obs = self.env.reset()
             self.state = self.preprocess(obs)
             for _ in range(self.max_iterations):
@@ -168,8 +168,8 @@ class DeepQAgent():
                 reward = self.transform_reward(reward)
                 self.replay_memory.append([self.state, action, reward, done])
                 self.state = self.preprocess(obs)
-                self.i_frames += 1
-                if not self.i_frames < self.start_replay:
+                i_frames += 1
+                if not i_frames < self.start_replay:
                     break
                 elif done:
                     break
@@ -216,6 +216,8 @@ class DeepQAgent():
 
     def train_episode(self, episode):
         """Train one episode of deep Q-learning."""
+        self.update_epsilon()
+
         # Flags
         self.time_flag = time.time()
         self.frames_flag = self.i_frames
@@ -257,7 +259,6 @@ class DeepQAgent():
         With small probabily, take a random action;
         otherwise, take the action from the neural network.
         """
-        self.update_epsilon()
         if np.random.rand() < self.epsilon:
             action = np.random.choice(self.action_size)
         else:
