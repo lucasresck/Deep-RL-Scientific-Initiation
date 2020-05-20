@@ -249,8 +249,7 @@ class DeepQAgent():
         self.report(i, episode, total_reward)
         self.sync_networks()
         if (episode + 1) % 50 == 0:
-            now = datetime.today().strftime('%Y-%m-%d-%H:%M:%S')
-            self.save_network('models/' + now + '-breakout-{}.h5'.format(episode))
+            self.save_network('models/breakout' + self.current_time + '-{}.h5'.format(episode))
         return max_frames
 
     def take_action(self):
