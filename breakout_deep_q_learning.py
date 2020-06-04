@@ -244,8 +244,7 @@ class DeepQAgent():
             elif done:
                 break
 
-        tf.summary.scalar("total_reward", total_reward, step=episode)
-        self.writer.flush()
+        self.summary(total_reward, episode)
         self.report(i, episode, total_reward)
         self.sync_networks()
         if (episode + 1) % 50 == 0:
@@ -331,6 +330,13 @@ class DeepQAgent():
                 y=targets,
                 verbose=0
             )
+
+    def summary(self, total_reward, episode):
+        tf.summary.scalar("total_reward", total_reward, step=episode)
+        tf.summary.scalar("epsilon", self.epsilon, step=episode)
+        tf.summary.scalar("total_reward_by_frames", total_reward, step=self.i_frames)
+        tf.summary.scalar("epsilon_by_frames", self.epsilon, step=self.i_frames)
+        self.writer.flush()
 
     def report(self, i, episode, total_reward):
         """Show status on console."""
