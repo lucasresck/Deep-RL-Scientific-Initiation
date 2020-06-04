@@ -15,7 +15,6 @@ import os
 import pickle
 import pstats
 import random
-import tensorflow as tf
 import time
 
 
@@ -140,8 +139,12 @@ class DeepQAgent():
         self.current_time = datetime.now().strftime("%Y%m%d-%H%M%S")
         self.log_dir += self.current_time
         self.writer = tf.summary.create_file_writer(self.log_dir)
-        self.tensorboard_callback = keras.callbacks.TensorBoard(log_dir=self.log_dir)
+        self.tensorboard_callback = keras.callbacks.TensorBoard(
+            log_dir=self.log_dir,
+            histogram_freq=1
+        )
         self.callback = True
+
 
     def set_seeds(self, seed):
         """Set random seeds using current time."""
@@ -316,21 +319,14 @@ class DeepQAgent():
 
     def fit(self, states, targets):
         one_hot = np.ones(shape=(states.shape[0], self.action_size))
-        if self.callback:
-            # I only wanna the graph, so do this once:
-            self.neural_network.model.fit(
+        self.neural_network.model.fit(
                 x=[states, one_hot],
                 y=targets,
                 verbose=0,
+                epochs=5,
+                batch_size=12,
                 callbacks=[self.tensorboard_callback]
-            )
-            self.callback = False
-        else:
-            self.neural_network.model.fit(
-                x=[states, one_hot],
-                y=targets,
-                verbose=0
-            )
+        )
 
     def report(self, i, episode, total_reward):
         """Show status on console."""
@@ -437,12 +433,6 @@ def gpu_setup():
             print(e)
 
 def main():
-    parser = argparse.ArgumentParser(description='Train or run Breakout deep Q-learning algorithm.')
-    parser.add_argument('--run', metavar='MODEL_PATH', help='run saved model')
-    parser.add_argument('--gpu', action='store_true', help='limit gpu growth')
-    parser.add_argument('--profile', action='store_true', help='profile training')
-    # parser.add_argument('--record', action='store_true')
-    args = parser.parse_args()
     # agent = DeepQAgent(args.record)
     if args.gpu:
         gpu_setup()
@@ -465,4 +455,19 @@ def main():
         agent.save_network()
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Train or run Breakout deep Q-learning algorithm.')
+    parser.add_argument('--run', metavar='MODEL_PATH', help='run saved model')
+    parser.add_argument('--gpu', action='store_true', help='limit gpu growth')
+    parser.add_argument('--profile', action='store_true', help='profile training')
+    parser.add_argument('--showlogs', action='store_true', help='show all logs during training')
+    # parser.add_argument('--record', action='store_true')
+
+    args = parser.parse_args()
+
+    if not args.showlogs:
+        # In order to be able to follow training,
+        # it's necessary to disable the printing of logs.
+        os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+    import tensorflow as tf
+
     main()
