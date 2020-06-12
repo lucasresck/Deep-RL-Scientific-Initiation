@@ -298,7 +298,8 @@ class DeepQAgent():
         return states, states_
 
     def calculate_targets(self, minibatch, states, states_):
-        targets, targets_ = self.target_predict(states, states_)
+        targets = np.zeros((states.shape[0], self.action_size))
+        targets_ = self.target_predict(states, states_)
         for i, sample in enumerate(minibatch):
             _, action, reward, _, done = sample
             if done:
@@ -309,12 +310,12 @@ class DeepQAgent():
 
     def target_predict(self, states, states_):
         one_hot = np.ones(shape=(states.shape[0], self.action_size))
-        targets = self.neural_network.model.predict([states, one_hot])
+        # targets = self.neural_network.model.predict([states, one_hot])
         targets_ = self.target_network.model.predict([states_, one_hot])
-        return targets, targets_
+        return targets_
 
     def fit(self, states, targets):
-        one_hot = np.ones(shape=(states.shape[0], self.action_size))
+        one_hot = np.array(targets !=0 , dtype=np.int32)
         if self.callback:
             # I only wanna the graph, so do this once:
             self.neural_network.model.fit(
@@ -452,7 +453,7 @@ def main():
     # agent = DeepQAgent(args.record)
     if args.gpu:
         gpu_setup()
-    agent = DeepQAgent(False)
+    agent = DeepQAgent(False)   
     if args.run:
         agent.load_network(args.run)
         agent.sample()
