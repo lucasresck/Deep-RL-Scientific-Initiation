@@ -421,7 +421,7 @@ class DeepQAgent():
 
     def which_action(self, state):
         """Select which is the best action based on the network."""
-        if np.random.rand() < self.epsilon_min/10:
+        if np.random.rand() < self.epsilon_min:
             return self.env.action_space.sample()
         one_hot = np.ones(shape=(1, self.action_size))
         logits = self.neural_network.model.predict([state[np.newaxis, ...], one_hot])[0]
