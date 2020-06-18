@@ -202,19 +202,19 @@ class DeepQAgent():
         self.target_network = NeuralNetwork(self.nn_input_shape, self.action_size)
         self.target_network.model.set_weights(self.neural_network.model.get_weights())
 
-        episode = 0  # Flag
+        self.episode = 0  # Flag
 
         with self.writer.as_default():
             while self.i_frames < self.max_frames:
-                if self.train_episode(episode):
+                if self.train_episode():
                     break
                 # if (episode + 1) % 50 == 0:
                 #     self.sample(1)
-                episode += 1
+                self.episode += 1
 
         self.env.close()
 
-    def train_episode(self, episode):
+    def train_episode(self):
         """Train one episode of deep Q-learning."""
         self.update_epsilon()
 
@@ -244,11 +244,11 @@ class DeepQAgent():
             elif done:
                 break
 
-        self.summary(total_reward, episode)
-        self.report(i, episode, total_reward)
+        self.summary(total_reward)
+        self.report(i, total_reward)
         self.sync_networks()
-        if (episode + 1) % 50 == 0:
-            self.save_network('models/breakout' + self.current_time + '-{}.h5'.format(episode))
+        if (self.episode + 1) % 50 == 0:
+            self.save_network(episode=True)
         return max_frames
 
     def take_action(self):
@@ -331,21 +331,21 @@ class DeepQAgent():
                 verbose=0
             )
 
-    def summary(self, total_reward, episode):
-        tf.summary.scalar("total_reward", total_reward, step=episode)
-        tf.summary.scalar("epsilon", self.epsilon, step=episode)
+    def summary(self, total_reward):
+        tf.summary.scalar("total_reward", total_reward, step=self.episode)
+        tf.summary.scalar("epsilon", self.epsilon, step=self.episode)
         tf.summary.scalar("total_reward_by_frames", total_reward, step=self.i_frames)
         tf.summary.scalar("epsilon_by_frames", self.epsilon, step=self.i_frames)
         self.writer.flush()
 
-    def report(self, i, episode, total_reward):
+    def report(self, i, total_reward):
         """Show status on console."""
 
         self.mean_reward.append(total_reward)
 
         print('\nep    reward    mean_rew    epsilon    time     accum_time    frames    acumm_frames')
 
-        ep = episode
+        ep = self.episode
         print('{}'.format(ep) + ' '*(len('ep')+4-len(str(ep))), end='')
 
         reward = int(total_reward)
@@ -377,10 +377,16 @@ class DeepQAgent():
         """Sync original and target neural networks."""
         self.target_network.model.set_weights(self.neural_network.model.get_weights())
 
-    def save_network(self, network_path='models/breakout/'):
+    def save_network(self, network_dir='models/breakout/', episode=False):
         """Save the network in order to run it faster."""
+        network_path = network_dir
         network_path += self.current_time
-        network_path += '.h5'
+        network_path += '/'
+        if episode:
+            network_path += str(self.episode)
+            network_path += '.h5'
+        else:
+            network_path += 'network.h5'
         os.makedirs(os.path.dirname(network_path), exist_ok=True)
         self.neural_network.model.save(network_path)
         print('\nNeural network saved.')
@@ -415,7 +421,8 @@ class DeepQAgent():
                 self.env.render()
             if done:
                 break
-            time.sleep(0.01)
+            # Sleep is not necessary because prediction is slow enough
+            # time.sleep(0.01)
         self.env.close()
         print('Reward: ', total_reward)
 
