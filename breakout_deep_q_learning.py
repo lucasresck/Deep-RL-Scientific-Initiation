@@ -27,6 +27,14 @@ class NeuralNetwork():
         self.summary = summary
         self.model = self.model_of_network()
 
+    def huber_loss(self, a, b):
+        error = a - b
+        quadratic = error * error / 2
+        linear = abs(error) - 1/2
+        linear_term = (abs(error) > 1.0)
+        linear_term = keras.backend.cast(linear_term, 'float32')
+        return linear * linear_term + quadratic * (1 - linear_term)
+
     def model_of_network(self):
         frames_input = keras.Input(shape=self.input_shape)
         actions_input = keras.Input(shape=(self.action_size,))
@@ -52,7 +60,7 @@ class NeuralNetwork():
 
         if self.summary:
             model.summary()
-        model.compile(loss='mean_squared_error', optimizer=tf.keras.optimizers.RMSprop(learning_rate=self.learning_rate))
+        model.compile(loss=self.huber_loss, optimizer=tf.keras.optimizers.RMSprop(learning_rate=self.learning_rate))
         return model
 
 class ReplayMemory():
@@ -109,7 +117,8 @@ class DeepQAgent():
         start_replay=int(5e4),
         minibatch_size=32,
         nn_input_shape=(105, 80, 4),
-        log_dir = 'logs/breakout/'
+        log_dir = 'logs/breakout/',
+        sync_networks_every=10000
     ):
         self.env = gym.make(env_name)
         # if record:
@@ -142,6 +151,7 @@ class DeepQAgent():
         self.writer = tf.summary.create_file_writer(self.log_dir)
         self.tensorboard_callback = keras.callbacks.TensorBoard(log_dir=self.log_dir)
         self.callback = True
+        self.sync_networks_every = sync_networks_every
 
     def set_seeds(self, seed):
         """Set random seeds using current time."""
@@ -233,7 +243,12 @@ class DeepQAgent():
             obs, reward, done, _ = self.env.step(action)
             reward = self.transform_reward(reward)
             self.replay_memory.append([self.state, action, reward, done])
+
             self.i_frames += 1
+            if self.i_frames % self.sync_networks_every == 0:
+                print('\nSyncing networks...')
+                self.sync_networks()
+
             total_reward += reward
 
             self.state = self.preprocess(obs)
@@ -246,7 +261,6 @@ class DeepQAgent():
 
         self.summary(total_reward)
         self.report(i, total_reward)
-        self.sync_networks()
         if (self.episode + 1) % 50 == 0:
             self.save_network(episode=True)
         return max_frames
@@ -460,7 +474,7 @@ def main():
     # agent = DeepQAgent(args.record)
     if args.gpu:
         gpu_setup()
-    agent = DeepQAgent(False)   
+    agent = DeepQAgent(False)
     if args.run:
         agent.load_network(args.run)
         agent.sample()
