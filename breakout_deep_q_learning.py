@@ -20,7 +20,7 @@ import time
 
 
 class NeuralNetwork():
-    def __init__(self, input_shape, action_size, learning_rate=0.00025, summary=False):
+    def __init__(self, input_shape, action_size, learning_rate=0.00001, summary=False):
         self.input_shape = input_shape
         self.action_size = action_size
         self.learning_rate = learning_rate
@@ -60,7 +60,7 @@ class NeuralNetwork():
 
         if self.summary:
             model.summary()
-        model.compile(loss=self.huber_loss, optimizer=tf.keras.optimizers.RMSprop(learning_rate=self.learning_rate))
+        model.compile(loss=self.huber_loss, optimizer=tf.keras.optimizers.Adam(learning_rate=self.learning_rate))
         return model
 
 class ReplayMemory():
@@ -252,7 +252,8 @@ class DeepQAgent():
             total_reward += reward
 
             self.state = self.preprocess(obs)
-            self.train_from_replay()
+            if self.i_frames % 5 == 0:
+                self.train_from_replay()
             if not self.i_frames < self.max_frames:  # Max frames
                 max_frames = True
                 break
