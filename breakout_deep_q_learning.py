@@ -115,7 +115,7 @@ class DeepQAgent():
         epsilon_min=0.1,
         replay_memory_capacity=int(1e6),
         start_replay=int(5e4),
-        minibatch_size=32,
+        minibatch_size=32*5,
         nn_input_shape=(105, 80, 4),
         log_dir = 'logs/breakout/',
         sync_networks_every=10000
@@ -475,7 +475,13 @@ def main():
     # agent = DeepQAgent(args.record)
     if args.gpu:
         gpu_setup()
-    agent = DeepQAgent(False)
+    agent = DeepQAgent(
+        False,
+        max_frames=10000,
+        epsilon_decay_until=10000,
+        start_replay=32*5+4,
+        minibatch_size=32*5,
+    )
     if args.run:
         agent.load_network(args.run)
         agent.sample()
