@@ -475,13 +475,7 @@ def main():
     # agent = DeepQAgent(args.record)
     if args.gpu:
         gpu_setup()
-    agent = DeepQAgent(
-        False,
-        max_frames=10000,
-        epsilon_decay_until=10000,
-        start_replay=32*5+4,
-        minibatch_size=32*5,
-    )
+    agent = DeepQAgent(False)
     if args.run:
         agent.load_network(args.run)
         agent.sample()
